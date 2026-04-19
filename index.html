@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>경기도 실시간 기상 전광판</title>
+    <style>
+        :root {
+            --bg-gradient: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            --card-bg: rgba(255, 255, 255, 0.15);
+        }
+        body {
+            font-family: 'Pretendard', sans-serif;
+            background: var(--bg-gradient);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            color: white;
+        }
+        .container {
+            background: var(--card-bg);
+            backdrop-filter: blur(15px);
+            padding: 2.5rem;
+            border-radius: 30px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+            text-align: center;
+            width: 350px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        select {
+            width: 100%;
+            padding: 12px;
+            border-radius: 12px;
+            border: none;
+            background: rgba(255, 255, 255, 0.9);
+            font-size: 1rem;
+            margin-bottom: 2rem;
+            cursor: pointer;
+            outline: none;
+            color: #333;
+        }
+        .weather-box { transition: all 0.5s ease; }
+        .temp { font-size: 4.5rem; font-weight: 800; margin: 0.5rem 0; text-shadow: 2px 2px 10px rgba(0,0,0,0.2); }
+        .city-name { font-size: 1.2rem; opacity: 0.8; margin-bottom: 5px; }
+        .desc { font-size: 1.5rem; font-weight: 500; margin-bottom: 20px; }
+        .details {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            background: rgba(0, 0, 0, 0.1);
+            padding: 15px;
+            border-radius: 15px;
+        }
+        .update-tag { font-size: 0.75rem; opacity: 0.6; margin-top: 20px; }
+        .error { color: #ff6b6b; font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <select id="city-select">
+        <option value="58,125">광명시</option>
+        <option value="60,121">수원시</option>
+        <option value="57,127">부천시</option>
+        <option value="57,128">고양시</option>
+        <option value="62,123">용인시</option>
+        <option value="60,127">성남시</option>
+        <option value="55,124">안산시</option>
+        <option value="59,123">안양시</option>
+        <option value="62,130">남양주시</option>
+        <option value="57,119">평택시</option>
+        <option value="61,120">화성시</option>
+    </select>
+
+    <div id="weather-box" class="weather-box">
+        <div class="city-name" id="display-city">지역을 선택하세요</div>
+        <div id="weather-info">
+            <p>데이터 로딩 중...</p>
+        </div>
+    </div>
+    
+    <div id="update-time" class="update-tag"></div>
+</div>
+
+<script>
+    const API_KEY = "OaRLlfpKOXJH%2BFeghkAojoaSAQbb1bkFF9COvGfjixpiLkEYTHFLqIcBYqFb0HCrcX8H3A47X9QNiRpgcCXAOA%3D%3D";
+    const citySelect = document.getElementById('city-select');
+    const weatherInfo = document.getElementById('weather-info');
+    const displayCity = document.getElementById('display-city');
+    const updateTime = document.getElementById('update-time');
+
+    async function getWeather() {
+        const coords = citySelect.value.split(',');
+        const nx = coords[0];
+        const ny = coords[1];
+        const cityName = citySelect.options[citySelect.selectedIndex].text;
+
+        // 시간 계산 logic
+        const now = new Date();
+        let baseDate = now.getFullYear() + String(now.getMonth() + 1).padStart(2, '0') + String(now.getDate()).padStart(2, '0');
+        let hours = now.getHours();
+        let minutes = now.getMinutes();
+
+        // 45분 이전이면 1시간 전 데이터 참조
+        if (minutes < 45) {
+            if (hours === 0) {
+                const yesterday = new Date(now.setDate(now.getDate() - 1));
+                baseDate = yesterday.getFullYear() + String(yesterday.getMonth() + 1).padStart(2, '0') + String(yesterday.getDate()).padStart(2, '0');
+                hours = 23;
+            } else {
+                hours -= 1;
+            }
+        }
+        const baseTime = String(hours).padStart(2, '0') + "00";
+
+        const url = `https://apis.data.go.kr/1360000/VilageFcstInfoService_2.0/getUltraSrtNcst?serviceKey=${API_KEY}&pageNo=1&numOfRows=10&dataType=JSON&base_date=${baseDate}&base_time=${baseTime}&nx=${nx}&ny=${ny}`;
+
+        try {
+            weatherInfo.innerHTML = "<p>업데이트 중...</p>";
+            const response = await fetch(url);
+            const data = await response.json();
+
+            if (data.response.header.resultCode !== "00") throw new Error();
+
+            const items = data.response.body.items.item;
+            const temp = items.find(i => i.category === "T1H").obsrValue;
+            const humidity = items.find(i => i.category === "REH").obsrValue;
+            const wind = items.find(i => i.category === "WSD").obsrValue;
+            const pty = items.find(i => i.category === "PTY").obsrValue;
+
+            let ptyText = "맑음 ☀️";
+            if(pty === "1") ptyText = "비 🌧️";
+            else if(pty === "2") ptyText = "비/눈 🌨️";
+            else if(pty === "3") ptyText = "눈 ❄️";
+            else if(pty === "4") ptyText = "소나기 🌦️";
+
+            displayCity.innerText = `경기도 ${cityName}`;
+            weatherInfo.innerHTML = `
+                <div class="temp">${temp}°</div>
+                <div class="desc">${ptyText}</div>
+                <div class="details">
+                    <div>💧 습도<br><b>${humidity}%</b></div>
+                    <div>💨 풍속<br><b>${wind}m/s</b></div>
+                </div>
+            `;
+            updateTime.innerText = `마지막 업데이트: ${baseDate} ${baseTime.substring(0,2)}:00`;
+
+        } catch (e) {
+            weatherInfo.innerHTML = "<p class='error'>날씨 정보를 가져오지 못했습니다.<br>잠시 후 다시 시도해주세요.</p>";
+        }
+    }
+
+    // 선택이 바뀔 때마다 호출
+    citySelect.addEventListener('change', getWeather);
+    
+    // 초기 실행
+    window.onload = getWeather;
+</script>
+
+</body>
+</html>
